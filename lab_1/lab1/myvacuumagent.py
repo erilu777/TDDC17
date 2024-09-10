@@ -297,6 +297,9 @@ class MyVacuumAgent(Agent):
             for y in range(1, self.state.world_height - 1):
                 for x in range(1, self.state.world_width - 1):
                     self.state.world[x][y]["visit_count"] += (x + y)**2
+        #Prioritize going forward if possible, to avoid unnecessaryly turning into wall on way home
+        if tiles[1]["type"] != AGENT_STATE_WALL:
+            return self.go_forward()
 
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
