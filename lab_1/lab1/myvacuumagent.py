@@ -30,7 +30,7 @@ class MyAgentState:
     def __init__(self, width, height):
 
         # Initialize perceived world state
-        self.world = [[{"type": AGENT_STATE_UNKNOWN, "visit_count": 0} for _ in range(height)] for _ in range(width)]
+        self.world = [[{"type": AGENT_STATE_UNKNOWN, "visit_count": 0, "recently_visited": 0, "heat": 0} for _ in range(height)] for _ in range(width)]
         self.world[1][1]["type"] = AGENT_STATE_HOME
 
         # Agent internal state
@@ -87,7 +87,7 @@ class MyAgentState:
     def print_visit_count(self):
         for y in range(self.world_height):
             for x in range(self.world_width):
-                print(f"[{self.world[x][y]['visit_count']}]", end="")
+                print(f"[{self.world[x][y]['recently_visited']}]", end="")
             print()
         print()
 
@@ -177,7 +177,6 @@ class MyVacuumAgent(Agent):
         if self.frame_counter % self.heatmap_update_frequency == 0:
             self.update_heatmap()
         
-
         # Track position of agent
         self.state.update_position(bump)
 
@@ -186,8 +185,11 @@ class MyVacuumAgent(Agent):
             self.state.update_world(self.state.pos_x, self.state.pos_y, AGENT_STATE_DIRT)
         else:
             self.state.update_world(self.state.pos_x, self.state.pos_y, AGENT_STATE_CLEAR)
-
         
+        #Increment visit count and recently visited
+        self.state.world[self.state.pos_x][self.state.pos_y]["visit_count"] += 1
+
+        self.update_recently_visited()
 
         # Get an xy-pair based on where the agent is facing
         left_offset = [(-1, 0), (0, -1), (1, 0), (0, 1)][self.state.direction]
@@ -198,8 +200,6 @@ class MyVacuumAgent(Agent):
         right_tile = self.state.world[self.state.pos_x + right_offset[0]][self.state.pos_y + right_offset[1]]
         tiles = [left_tile, front_tile, right_tile]
 
-        #Increment visit count
-        self.state.world[self.state.pos_x][self.state.pos_y]["visit_count"] += 1
 
         if bump:
             # Mark the tile at the offset from the agent as a wall (since the agent bumped into it)
@@ -211,7 +211,7 @@ class MyVacuumAgent(Agent):
 
         # Debug
         self.state.print_visit_count()
-        self.state.print_world_debug()
+        #self.state.print_world_debug()
 
         return self.make_decision(bump, dirt, home, tiles)
 
@@ -241,23 +241,24 @@ class MyVacuumAgent(Agent):
                 return self.turn_right()
     
     def get_best_tile(self, tiles):
-        lowest_visit_count = float("inf")
+        
         best_tile = None
+        best_value = float('-inf')
 
         for tile in tiles:
             # Check if the tile is a wall or out of bounds
             if tile["type"] == AGENT_STATE_WALL:
                 continue  # Skip walls
             
-            # Check if the tile has the lowest visit count
-            if tile["visit_count"] < lowest_visit_count:
+            # Check which tile has the highest value
+            if self.calculate_tile_value(tile) > best_value:
                 best_tile = tile
-                lowest_visit_count = tile["visit_count"]
+                best_value = self.calculate_tile_value(tile)
 
         return best_tile
         
     def calculate_tile_value(self, tile):
-        return tile["visit_count"] * (-1) 
+        return tile["visit_count"] * (-1) + tile["recently_visited"] * 0.5
 
     def turn_left(self):
         self.state.direction = (self.state.direction + 3) % 4
@@ -301,15 +302,22 @@ class MyVacuumAgent(Agent):
         if tiles[1]["type"] != AGENT_STATE_WALL:
             return self.go_forward()
 
+    def update_recently_visited(self):
+        for y in range(self.state.world_height):
+            for x in range(self.state.world_width):
+                if self.state.pos_x == x and self.state.pos_y == y:
+                    self.state.world[x][y]["recently_visited"] = 0
+                else:
+                    self.state.world[x][y]["recently_visited"] += 1
+
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
         for y in range(self.state.world_height):
             for x in range(self.state.world_width):
                 if self.state.world[x][y]["type"] == AGENT_STATE_WALL:
                     visit_counts[x, y] = -1 
-
                 else:
-                    visit_counts[x, y] = self.state.world[x][y]["visit_count"]
+                    visit_counts[x, y] = self.state.world[x][y]["visit_count"] 
 
         masked_visit_counts = np.ma.masked_where(visit_counts == -1, visit_counts)
 
@@ -348,3 +356,8 @@ class MyVacuumAgent(Agent):
 
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
+
+    def visualize_heatmap(self):
+        #TODO: Move visualization of the heatmap
+        pass
+    
