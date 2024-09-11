@@ -168,11 +168,14 @@ class MyVacuumAgent(Agent):
                 self.log("Iteration counter is now 0. Halting!")
                 self.log("Performance: {}".format(self.performance))
             self.state.print_visit_count()
+            self.log("Performance: {}".format(self.performance))
             return ACTION_NOP
 
 
         self.iteration_counter -= 1
         
+        self.update_heat()
+
         self.frame_counter += 1
         if self.frame_counter % self.heatmap_update_frequency == 0:
             self.update_heatmap()
@@ -207,7 +210,6 @@ class MyVacuumAgent(Agent):
 
         self.log("Position: ({}, {})\t\tDirection: {}".format(self.state.pos_x, self.state.pos_y,
                                                               direction_to_string(self.state.direction)))
-
 
         # Debug
         self.state.print_visit_count()
@@ -251,14 +253,44 @@ class MyVacuumAgent(Agent):
                 continue  # Skip walls
             
             # Check which tile has the highest value
-            if self.calculate_tile_value(tile) > best_value:
+            if tile["heat"] > best_value:
                 best_tile = tile
-                best_value = self.calculate_tile_value(tile)
+                best_value = tile["heat"]
+
+        #In case left, front and right tiles are all walls, turn randomly so that the agent doesn't get stuck
+        if best_tile is None:
+            self.log("No best tile found!")
+            pass
+            return self.turn_random()
 
         return best_tile
         
-    def calculate_tile_value(self, tile):
-        return tile["visit_count"] * (-1) + tile["recently_visited"] * 0.5
+    def find_unchecked_tile(self):
+        for y in range(self.state.world_height):
+            for x in range(self.state.world_width):
+                if self.state.world[x][y]["type"] == AGENT_STATE_UNKNOWN:
+                    return self.state.world[x][y]
+        return
+
+    #Make agent choose direction based on the heat of the tiles in a direction
+    def calculate_direction_score(self, tiles):
+        
+        score = 0
+
+        if AGENT_DIRECTION_NORTH:
+            score += self.state.left_offset["heat"]
+
+    def get_direction_tiles(self, direction):
+
+        look_ahead_distance = 2
+
+        tiles = []
+
+        for distance in range(1, look_ahead_distance): 
+            if 0 < self.left_offset[direction][distance][0] < self.state.world_width and 0 < self.front_offset[direction][distance][1] < self.state.world_height:
+                tiles.append(self.front_offset[direction]*distance)
+            tiles.append(self.left_offset[direction]*distance) 
+
 
     def turn_left(self):
         self.state.direction = (self.state.direction + 3) % 4
@@ -280,7 +312,7 @@ class MyVacuumAgent(Agent):
             return self.turn_left()
         else:
             return self.turn_right()
-        
+
     def check_if_finished(self, tiles):
         for y in range(1, self.state.world_height - 1):
             for x in range(1, self.state.world_width - 1):
@@ -291,16 +323,19 @@ class MyVacuumAgent(Agent):
     
     def return_home(self, tiles):
         if self.state.pos_x == 1 and self.state.pos_y == 1:
-            self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n\n\n\n\n")
+            self.log(f"Performance: {self.performance}")
+            self.log(f"Number of iterations: {self.iteration_counter}")
+            self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
             self.state.last_action = ACTION_NOP
             return ACTION_NOP
         else:
+            self.log(f"All tiles visited, returning home! Number of iterations: {self.iteration_counter}")
             for y in range(1, self.state.world_height - 1):
                 for x in range(1, self.state.world_width - 1):
-                    self.state.world[x][y]["visit_count"] += (x + y)**2
-        #Prioritize going forward if possible, to avoid unnecessaryly turning into wall on way home
-        if tiles[1]["type"] != AGENT_STATE_WALL:
-            return self.go_forward()
+                    self.state.world[x][y]["heat"] = (x + y)**2
+        #Prioritize going forward if possible, to avoid unnecessarily turning into wall on way home
+        #if tiles[1]["type"] != AGENT_STATE_WALL:
+            #return self.go_forward()
 
     def update_recently_visited(self):
         for y in range(self.state.world_height):
@@ -310,6 +345,16 @@ class MyVacuumAgent(Agent):
                 else:
                     self.state.world[x][y]["recently_visited"] += 1
 
+    def update_heat(self):
+        for y in range(self.state.world_height):
+            for x in range(self.state.world_width):
+                #The heat of a tile is calculated as the negative of the visit count plus the recently visited count
+                self.state.world[x][y]["heat"] = self.state.world[x][y]["visit_count"] * (-0.5) + self.state.world[x][y]["recently_visited"] * 1
+                if self.state.world[x][y]["type"] == AGENT_STATE_UNKNOWN:
+                    self.state.world[x][y]["heat"] += abs(x - self.state.pos_x) + abs(y - self.state.pos_y)
+                elif self.state.world[x][y]["type"] == AGENT_STATE_WALL:
+                    self.state.world[x][y]["heat"] = -1
+
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
         for y in range(self.state.world_height):
@@ -317,7 +362,7 @@ class MyVacuumAgent(Agent):
                 if self.state.world[x][y]["type"] == AGENT_STATE_WALL:
                     visit_counts[x, y] = -1 
                 else:
-                    visit_counts[x, y] = self.state.world[x][y]["visit_count"] 
+                    visit_counts[x, y] = self.state.world[x][y]["heat"] 
 
         masked_visit_counts = np.ma.masked_where(visit_counts == -1, visit_counts)
 
