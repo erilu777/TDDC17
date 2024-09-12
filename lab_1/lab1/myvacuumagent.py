@@ -1,6 +1,7 @@
 from lab1.liuvacuum import *
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 
 DEBUG_OPT_DENSEWORLDMAP = False
 
@@ -98,6 +99,13 @@ class MyAgentState:
             print()
         print()
 
+    def print_heatmap(self):
+        for y in range(self.world_height):
+            for x in range(self.world_width):
+                print(f"[{self.world[x][y]['heat']}]", end="")
+            print()
+        print()
+
 
 """
 Vacuum agent
@@ -121,7 +129,7 @@ class MyVacuumAgent(Agent):
         self.frame_counter = 0
 
     def move_to_random_start_position(self, bump):
-        action = random()
+        action = random.uniform(0, 1)
 
         self.initial_random_actions -= 1
         self.state.update_position(bump)
@@ -219,8 +227,9 @@ class MyVacuumAgent(Agent):
                                                               direction_to_string(self.state.direction)))
 
         # Debug
-        self.state.print_visit_count()
+        #self.state.print_visit_count()
         #self.state.print_world_debug()
+        self.state.print_heatmap()
 
         return self.make_decision(bump, dirt, home, tiles, offsets)
 
@@ -240,19 +249,13 @@ class MyVacuumAgent(Agent):
         else:
             next_direction = self.get_best_direction(offsets)
             if next_direction == 1:
-                self.forward_counter += 1
-                if(self.forward_counter > 3):
-                    self.log("Stuck in loop, turning randomly!")
-                    return self.turn_random()
                 self.log("Front tile is best -> going forward!")
                 return self.go_forward()
             elif next_direction == 0:
                 self.log("Left tile is best -> turning left!")
-                self.forward_counter = 0
                 return self.turn_left()
             else:
                 self.log("Right tile is best -> turning right!")
-                self.forward_counter = 0
                 return self.turn_right()
 
     def get_best_tile(self, tiles):
@@ -290,10 +293,13 @@ class MyVacuumAgent(Agent):
                 y = self.state.pos_y + dy * distance
                 if 0 <= x < self.state.world_width and 0 <= y < self.state.world_height:
                     tiles_checked += 1
-                    direction_score += self.state.world[x][y]["heat"] / (10 + distance)
+                    direction_score += self.state.world[x][y]["heat"] / (distance)
+                    if (self.state.world[x][y]["type"] == AGENT_STATE_WALL and distance == 1):
+                        direction_score = float('-inf')
+                        break
             if tiles_checked == 0:
                 direction_score = float('-inf')
-            direction_points.append(direction_score / tiles_checked)
+            direction_points.append((direction_score / tiles_checked) + tiles_checked)
             self.log(f"Direction: {offset} -> Score: {direction_score}")
         return direction_points.index(max(direction_points))
 
@@ -336,7 +342,7 @@ class MyVacuumAgent(Agent):
     def return_home(self, tiles):
         if self.state.pos_x == 1 and self.state.pos_y == 1:
             self.log(f"Performance: {self.performance}")
-            self.log(f"Number of iterations: {self.iteration_counter}")
+            self.log(f"Number of iterations: {1000 - self.iteration_counter}")
             self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
             self.state.last_action = ACTION_NOP
             return ACTION_NOP
@@ -358,14 +364,22 @@ class MyVacuumAgent(Agent):
                     self.state.world[x][y]["recently_visited"] += 1
 
     def update_heat(self):
+        wall_penalty = -2
+        unknown_bonus = 2
+        visit_penalty_factor = -5
+        recently_visited_bonus_factor = 2
         for y in range(self.state.world_height):
             for x in range(self.state.world_width):
-                #The heat of a tile is calculated as the negative of the visit count plus the recently visited count
-                self.state.world[x][y]["heat"] = self.state.world[x][y]["visit_count"] * (-0.5) + self.state.world[x][y]["recently_visited"] * 1
-                if self.state.world[x][y]["type"] == AGENT_STATE_UNKNOWN:
-                    self.state.world[x][y]["heat"] += abs(x - self.state.pos_x) + abs(y - self.state.pos_y)
-                elif self.state.world[x][y]["type"] == AGENT_STATE_WALL:
-                    self.state.world[x][y]["heat"] = -10
+                tile = self.state.world[x][y]
+                
+                if tile["type"] == AGENT_STATE_WALL:
+                    tile["heat"] = wall_penalty
+                else:   
+                    random_bonus_factor = random.uniform(0.9, 1.1)
+                    self.log(f"Random bonus factor: {random_bonus_factor}")
+                    tile["heat"] = (tile["visit_count"] * visit_penalty_factor + tile["recently_visited"] * recently_visited_bonus_factor) * random_bonus_factor
+                    if tile["type"] == AGENT_STATE_UNKNOWN:
+                        tile["heat"] = 10
 
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
