@@ -121,16 +121,16 @@ class MyVacuumAgent(Agent):
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.heatmap = None 
         self.fig.canvas.draw()  
-
         self.heatmap_update_frequency = 1
         self.frame_counter = 0
-
         self.heatmap_reset = False
 
         self.turns_without_forward = 0
         self.max_turns_without_forward = 5
 
         self.following_wall = False
+        self.wall_start = None
+        self.has_moved_forward = False
 
     def move_to_random_start_position(self, bump):
         action = random.uniform(0, 1)
@@ -178,7 +178,7 @@ class MyVacuumAgent(Agent):
         # START MODIFYING HERE #
         ########################
 
-        self.log("--------NEW ITERATION--------")
+        self.log("\n\n\n\n\n--------NEW ITERATION--------")
 
         # Max iterations for the agent
         if self.iteration_counter < 1:
@@ -215,12 +215,14 @@ class MyVacuumAgent(Agent):
         left_offset = [(-1, 0), (0, -1), (1, 0), (0, 1)][self.state.direction]
         front_offset = [(0, -1), (1, 0), (0, 1), (-1, 0)][self.state.direction]
         right_offset = [(1, 0), (0, 1), (-1, 0), (0, -1)][self.state.direction]
+        offsets = [left_offset, front_offset, right_offset]
+
         """
         left_tile = self.state.world[self.state.pos_x + left_offset[0]][self.state.pos_y + left_offset[1]]
         front_tile = self.state.world[self.state.pos_x + front_offset[0]][self.state.pos_y + front_offset[1]]
         right_tile = self.state.world[self.state.pos_x + right_offset[0]][self.state.pos_y + right_offset[1]]
         """
-        offsets = [left_offset, front_offset, right_offset]
+        
 
         if bump:
             # Mark the tile at the offset from the agent as a wall (since the agent bumped into it)
@@ -238,7 +240,17 @@ class MyVacuumAgent(Agent):
     def make_decision(self, bump, dirt, home, offsets):
 
         if bump:
+            if not self.following_wall:
+                self.log(f"FOUND NEW WALL! Position: x: {self.state.pos_x}, y: {self.state.pos_y}")
+                self.wall_start = (self.state.pos_x, self.state.pos_y)
+            else:
+                self.log(f"Found wall while following wall! Position: x: {self.state.pos_x}, y: {self.state.pos_y}")
             self.log(f"BUMP!\n\n")
+            return self.follow_wall(bump, offsets)
+        
+        if self.following_wall:
+            self.log("Following wall! NOT BUMPED!")
+            return self.follow_wall(bump, offsets)
 
         # Decide action
         if self.check_if_finished():
@@ -247,7 +259,7 @@ class MyVacuumAgent(Agent):
                 self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
                 self.log(f"Number of iterations: {MAX_ITERATIONS - self.iteration_counter}")
                 self.state.last_action = ACTION_NOP
-                return ACTION_NOP
+                return ACTION_NOP   
             else:
                 if not self.heatmap_reset:
                     self.heatmap_reset = True
@@ -258,26 +270,84 @@ class MyVacuumAgent(Agent):
             self.log("DIRT -> choosing SUCK action!")
             self.state.last_action = ACTION_SUCK
             return ACTION_SUCK
+        elif self.following_wall:
+            pass
+
+        next_direction = self.get_best_direction(offsets)
+        if next_direction == 1:
+            self.log("Front tile is best -> going forward!")
+            self.turns_without_forward = 0
+            return self.go_forward()
         else:
-            next_direction = self.get_best_direction(offsets)
-            if next_direction == 1:
-                self.log("Front tile is best -> going forward!")
+            if self.turns_without_forward > self.max_turns_without_forward:
+                self.log("Too many turns without going forward -> going forward!")
                 self.turns_without_forward = 0
                 return self.go_forward()
+            if next_direction == 0:
+                self.log("Left tile is best -> turning left!")
+                self.turns_without_forward += 1
+                return self.turn_left()
             else:
-                if self.turns_without_forward > self.max_turns_without_forward:
-                    self.log("Too many turns without going forward -> going forward!")
-                    self.turns_without_forward = 0
-                    return self.go_forward()
-                if next_direction == 0:
-                    self.log("Left tile is best -> turning left!")
-                    self.turns_without_forward += 1
-                    return self.turn_left()
-                else:
-                    self.log("Right tile is best -> turning right!")
-                    self.turns_without_forward += 1
-                    return self.turn_right()
+                self.log("Right tile is best -> turning right!")
+                self.turns_without_forward += 1
+                return self.turn_right()
+        
 
+    def follow_wall(self, bump, offsets):
+        left_dx, left_dy = offsets[0]
+        front_dx, front_dy = offsets[1]
+        right_dx, right_dy = offsets[2]
+
+        left_tile = self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]
+        front_tile = self.state.world[self.state.pos_x + front_dx][self.state.pos_y + front_dy]
+
+        self.log(f"Follows wall: {self.following_wall}")
+        self.log(f"Has moved forward: {self.has_moved_forward}")
+        self.log(f"Wall start: {self.wall_start}")
+
+        if bump:
+            self.log("Bumped into new wall, turn right!")
+            self.following_wall = True
+            return self.turn_right()
+
+        if (self.state.pos_x, self.state.pos_y) == self.wall_start and self.has_moved_forward:
+            self.log("RETURNED TO WALL START, turn right!")
+            self.has_moved_forward = False
+            self.following_wall = False
+            self.wall_start = None
+            return self.turn_right()
+        elif left_tile["type"] == AGENT_STATE_WALL or self.state.last_action == ACTION_TURN_LEFT:
+            self.log("Wall to the left/just moved left -> go forward!")
+            self.has_moved_forward = True
+            return self.go_forward()
+        elif left_tile["type"] == AGENT_STATE_UNKNOWN or (left_tile["type"] != AGENT_STATE_WALL and self.state.last_action == ACTION_FORWARD):
+            self.log("Turn left!")
+            return self.turn_left()
+        self.log("Turn right!")
+        return self.turn_right()
+    
+
+        """
+        elif self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]["type"] != AGENT_STATE_UNKNOWN:
+            self.log("Clear tile to the left -> go forward!")
+            self.has_moved_forward = True
+            return self.go_forward()
+        elif self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]["type"] == AGENT_STATE_UNKNOWN:
+            self.log("Unknown tile to the left -> turn left!")
+            return self.turn_left()
+        return self.turn_right()
+        """
+
+        """
+        if self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]["type"] == AGENT_STATE_WALL:
+            return self.go_forward()
+        elif self.state.world[self.state.pos_x + front_dx][self.state.pos_y + front_dy]["type"] == AGENT_STATE_WALL:
+            return self.turn_right()
+        elif self.state.world[self.state.pos_x + right_dx][self.state.pos_y + right_dy]["type"] == AGENT_STATE_WALL:
+            return self.go_forward()
+        elif self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]["type"] == AGENT_STATE_WALL:
+            return self.turn_left()
+        """
 
     def get_best_direction(self, offsets):
         look_ahead_distance = 5
