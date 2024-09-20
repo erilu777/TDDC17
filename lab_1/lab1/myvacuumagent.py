@@ -144,6 +144,8 @@ class MyVacuumAgent(Agent):
         self.has_moved_forward = False
         self.turn_count = {"left": 0, "right": 0}
         self.current_wall = []
+        self.closed_in_tiles = []
+        self.outer_wall_tiles = []
 
     def move_to_random_start_position(self, bump):
         action = random.uniform(0, 1)
@@ -270,13 +272,11 @@ class MyVacuumAgent(Agent):
                 self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
                 self.log(f"Number of iterations: {MAX_ITERATIONS - self.iteration_counter}")
                 self.state.last_action = ACTION_NOP
-                return ACTION_NOP   
-            else:
-                if not self.heatmap_reset:
-                    self.heatmap_reset = True
-                    self.reset_heatmap()
-                self.create_heatmap_slope()
-
+                return ACTION_NOP  
+            front_x, front_y = (self.state.pos_x + offsets[1][0], self.state.pos_y + offsets[1][1]) 
+            if (front_x, front_y) in self.outer_wall_tiles:        
+                self.log("ALL TILES VISITED AND AGENT IS AT OUTER WALL!\n\n")
+                self.following_wall = True 
 
         next_direction = self.get_best_direction(offsets)
         if next_direction == 1:
@@ -317,7 +317,7 @@ class MyVacuumAgent(Agent):
 
         self.log(f"Has moved forward: {self.has_passed_wall_start}")
 
-        if self.outer_wall_finished_check(front_offset) or self.inner_wall_finished_check():
+        if self.outer_wall_finished_check(front_offset) or self.inner_wall_finished_check(front_offset):
             self.log("RETURNED TO WALL START, TURN RIGHT!")
             self.has_moved_forward = False
             self.following_wall = False
@@ -329,54 +329,11 @@ class MyVacuumAgent(Agent):
             return self.turn_right()
 
         if bump:
-            
-            """
-            if front_offset in self.current_wall:
-                self.log(f"Tiles that are part of wall: {self.current_wall}")
-                if self.turn_count["right"] > self.turn_count["left"]:
-                    self.log("JUST FINISHED FOLLOWING OUTER WALL!")
-                    self.update_world_borders()
-                else:
-                    self.log(("JUST FINISHED FOLLOWING INNER WALL!"))
-                    
-                self.log("RETURNED TO WALL START, turn right!")
-                self.has_moved_forward = False
-                self.following_wall = False
-                self.wall_start = None
-                self.turn_count["right"] = 0
-                self.turn_count["left"] = 0
-                self.current_wall = []
-                return self.turn_right()
-            else:
-            """
             self.log("Bumped into wall, turn right!")
             self.following_wall = True
             self.turn_count["right"] += 1
             self.current_wall.append(front_offset)
             return self.turn_right()
-        
-        """
-        if (self.state.pos_x, self.state.pos_y) == self.wall_start and self.has_moved_forward:
-
-            self.log(f"Tiles that are part of wall: {self.current_wall}")
-
-            if self.turn_count["left"] > self.turn_count["right"]:
-                if self.current_wall[0] == self.current_wall[-1]:
-                    self.log("JUST FINISHED FOLLOWING OUTER WALL!")
-                    self.update_world_borders()
-                self.log(f"FINISHED FOLLOWING OUTER WALL, BUT WALL ISN'T CLOSED!")
-            else:
-                self.log(("JUST FINISHED FOLLOWING INNER WALL!"))
-            
-            self.log("RETURNED TO WALL START, turn right!")
-            self.has_moved_forward = False
-            self.following_wall = False
-            self.wall_start = None
-            self.turn_count["right"] = 0
-            self.turn_count["left"] = 0
-            self.current_wall = []
-            return self.turn_right()
-        """
 
         if left_tile["type"] == AGENT_STATE_WALL or self.state.last_action == ACTION_TURN_LEFT:
             self.log("Wall to the left/just moved left -> go forward!")
@@ -394,32 +351,45 @@ class MyVacuumAgent(Agent):
         if front_offset in self.current_wall and self.has_passed_wall_start and self.turn_count["right"] > self.turn_count["left"]:
             self.log(f"Tiles that are part of wall: {self.current_wall}")
             self.log("JUST FINISHED FOLLOWING OUTER WALL!")
+            self.outer_wall_tiles = self.current_wall
             self.update_world_borders()          
             return True  
 
-    def inner_wall_finished_check(self):
+    def inner_wall_finished_check(self, front_offset):
         if self.has_passed_wall_start and self.has_moved_forward and self.turn_count["right"] < self.turn_count["left"]:
             self.log("JUST FINISHED FOLLOWING INNER WALL!")
+            self.flood_fill_inner(self.current_wall[-1][0], self.current_wall[-1][1])
             return True
         
     def update_world_borders(self):
         self.log(f"UPDATING BORDER!")
-        self.flood_fill(self.state.pos_x, self.state.pos_y)
+        self.flood_fill_outer(self.state.pos_x, self.state.pos_y)
         for x in range(self.state.world_width):
             for y in range(self.state.world_height):
                 if not self.state.world[x][y]["interior"]:
                     self.state.world[x][y]["type"] = AGENT_STATE_WALL
 
-    def flood_fill(self, x, y):
+    def flood_fill_outer(self, x, y):
         if (x, y) in self.current_wall or self.state.world[x][y]["interior"] or x < 0 or x >= self.state.world_width or y < 0 or y >= self.state.world_height:
             self.log(f"{x}, {y} is in outer wall!")
             return
         self.log(f"Flood fill at {x}, {y}!")
         self.state.world[x][y]["interior"] = True
-        self.flood_fill(x + 1, y)  
-        self.flood_fill(x - 1, y)
-        self.flood_fill(x, y + 1)
-        self.flood_fill(x, y - 1)
+        self.flood_fill_outer(x + 1, y)  
+        self.flood_fill_outer(x - 1, y)
+        self.flood_fill_outer(x, y + 1)
+        self.flood_fill_outer(x, y - 1)
+
+    def flood_fill_inner(self, x, y):
+        if self.state.world[x][y]["type"] != AGENT_STATE_WALL and self.state.world[x][y]["type"] != AGENT_STATE_UNKNOWN or (x, y) in self.closed_in_tiles:
+            return
+        self.log(f"Flood fill interior wall at {x}, {y}!")
+        self.state.world[x][y]["type"] = AGENT_STATE_WALL
+        self.closed_in_tiles.append((x, y))
+        self.flood_fill_inner(x + 1, y)  
+        self.flood_fill_inner(x - 1, y)
+        self.flood_fill_inner(x, y + 1)
+        self.flood_fill_inner(x, y - 1)
 
     def get_best_direction(self, offsets):
         look_ahead_distance = 5
