@@ -136,7 +136,7 @@ class MyVacuumAgent(Agent):
         self.heatmap_reset = False
 
         self.turns_without_forward = 0
-        self.max_turns_without_forward = 5
+        self.max_turns_without_forward = 2
 
         self.following_wall = False
         self.wall_start = None
@@ -146,6 +146,9 @@ class MyVacuumAgent(Agent):
         self.current_wall = []
         self.closed_in_tiles = []
         self.outer_wall_tiles = []
+
+        self.all_tiles_discovered = False
+        self.following_wall_home = False
 
     def move_to_random_start_position(self, bump):
         action = random.uniform(0, 1)
@@ -248,6 +251,35 @@ class MyVacuumAgent(Agent):
 
     def make_decision(self, bump, dirt, home, offsets):
 
+        left_dx, left_dy = offsets[0]
+        left_tile = self.state.world[self.state.pos_x + left_dx][self.state.pos_y + left_dy]
+
+        front_dx, front_dy = offsets[1]
+        front_x = self.state.pos_x + front_dx
+        front_y = self.state.pos_y + front_dy
+        front_tile = self.state.world[self.state.pos_x + front_dx][self.state.pos_y + front_dy]
+
+        if not self.all_tiles_discovered:
+            self.all_tiles_discovered = self.check_if_finished()
+
+        if self.all_tiles_discovered:
+            self.log(f"ALL TILES DISCOVERED!")
+            self.log(f"Following wall home: {self.following_wall_home}")
+            self.log(f"Tiles part of outer wall: {self.outer_wall_tiles}")
+            self.log(f"Front tile: {self.state.pos_x + front_dx}, {self.state.pos_y + front_dy}, type: {front_tile['type']}")
+            if home:
+                self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
+                self.log(f"Number of iterations: {MAX_ITERATIONS - self.iteration_counter}")
+                self.state.last_action = ACTION_NOP
+                return ACTION_NOP
+            elif self.following_wall_home:
+                self.log(f"All tiles discovered and following wall home!")
+                return self.follow_wall_home(bump, left_tile, front_tile)
+            elif (front_x, front_y) in self.outer_wall_tiles:
+                self.log(f"Found outer wall at x: {self.state.pos_x + front_dx}, y: {self.state.pos_y + front_dy}\nTURNING RIGHT!")
+                self.following_wall_home = True
+                return self.turn_right()
+
         if dirt: 
             self.log(f"DIRT! Position: x: {self.state.pos_x}, y: {self.state.pos_y}")
             self.state.last_action = ACTION_SUCK
@@ -264,19 +296,6 @@ class MyVacuumAgent(Agent):
         if self.following_wall:
             self.log("Following wall! NOT BUMPED!")
             return self.follow_wall(bump, offsets[0], offsets[1])
-
-        # Decide action
-        if self.check_if_finished():
-            self.log("ALL TILES VISITED!\n\n\n\n")
-            if home:
-                self.log("ALL TILES VISITED AND AGENT HAS RETURNED HOME!\n\n")
-                self.log(f"Number of iterations: {MAX_ITERATIONS - self.iteration_counter}")
-                self.state.last_action = ACTION_NOP
-                return ACTION_NOP  
-            front_x, front_y = (self.state.pos_x + offsets[1][0], self.state.pos_y + offsets[1][1]) 
-            if (front_x, front_y) in self.outer_wall_tiles:        
-                self.log("ALL TILES VISITED AND AGENT IS AT OUTER WALL!\n\n")
-                self.following_wall = True 
 
         next_direction = self.get_best_direction(offsets)
         if next_direction == 1:
@@ -297,6 +316,12 @@ class MyVacuumAgent(Agent):
                 self.turns_without_forward += 1
                 return self.turn_right()
         
+    def follow_wall_home(self, bump, left_tile, front_tile):
+        if bump:
+            self.log(f"BUMPED INTO WALL! TURN RIGHT!")
+            return self.turn_right()
+
+
 
     def follow_wall(self, bump, left_offset, front_offset):
 
@@ -360,14 +385,31 @@ class MyVacuumAgent(Agent):
             self.log("JUST FINISHED FOLLOWING INNER WALL!")
             self.flood_fill_inner(self.current_wall[-1][0], self.current_wall[-1][1])
             return True
-        
+    """
     def update_world_borders(self):
         self.log(f"UPDATING BORDER!")
-        self.flood_fill_outer(self.state.pos_x, self.state.pos_y)
+        self.flood_fill_outer(self.outer_wall_tiles[0][0], self.outer_wall_tiles[0][1])
         for x in range(self.state.world_width):
             for y in range(self.state.world_height):
                 if not self.state.world[x][y]["interior"]:
                     self.state.world[x][y]["type"] = AGENT_STATE_WALL
+    """
+    def update_world_borders(self):
+        self.log(f"UPDATING BORDER!")
+        self.log(f"First tile in outer wall: {self.outer_wall_tiles[0]}, x: {self.outer_wall_tiles[0][0]}, y: {self.outer_wall_tiles[0][1]}")
+        self.flood_fill_outer(1, 1)
+        for x in range(self.state.world_width):
+            for y in range(self.state.world_height):
+                if not self.state.world[x][y]["interior"]:
+                    self.state.world[x][y]["type"] = AGENT_STATE_WALL
+        """
+        for x in range(self.state.world_width):
+            for y in range(self.state.world_height):
+                if not self.state.world[x][y]["interior"]:
+                    self.state.world[x][y]["type"] = AGENT_STATE_WALL
+        """
+
+    #(x, y) in self.current_wall or self.state.world[x][y]["interior"] or 
 
     def flood_fill_outer(self, x, y):
         if (x, y) in self.current_wall or self.state.world[x][y]["interior"] or x < 0 or x >= self.state.world_width or y < 0 or y >= self.state.world_height:
@@ -480,6 +522,7 @@ class MyVacuumAgent(Agent):
         unknown_bonus_factor = 5
         visit_count_penalty_factor = -2
         recently_visited_bonus_factor = 1
+        outer_wall_bonus_factor = 5
         for y in range(self.state.world_height):
             for x in range(self.state.world_width):
                 tile = self.state.world[x][y]
@@ -489,6 +532,9 @@ class MyVacuumAgent(Agent):
                     tile["heat"] = (tile["visit_count"] * visit_count_penalty_factor + tile["recently_visited"] * recently_visited_bonus_factor) 
                     if tile["type"] == AGENT_STATE_UNKNOWN:
                         tile["heat"] += unknown_bonus_factor * (MAX_ITERATIONS - self.iteration_counter)
+                if self.all_tiles_discovered:
+                    if (x, y) in self.outer_wall_tiles:
+                        tile["heat"] += outer_wall_bonus_factor * (MAX_ITERATIONS - self.iteration_counter)
 
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
