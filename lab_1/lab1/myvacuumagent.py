@@ -33,7 +33,7 @@ class MyAgentState:
     def __init__(self, width, height):
 
         # Initialize perceived world state
-        self.world = [[{"type": AGENT_STATE_UNKNOWN, "visit_count": 0, "recently_visited": 0, "heat": 0, "interior": None} for _ in range(height)] for _ in range(width)]
+        self.world = [[{"type": AGENT_STATE_UNKNOWN, "visit_count": 0, "recently_visited": 0, "heat": 0, "exterior": None} for _ in range(height)] for _ in range(width)]
         self.world[1][1]["type"] = AGENT_STATE_HOME
 
         # Agent internal state
@@ -104,13 +104,13 @@ class MyAgentState:
             print()
         print()
 
-    def print_interior(self):
+    def print_exterior(self):
         for y in range(self.world_height):
             for x in range(self.world_width):
-                if self.world[x][y]["interior"]:
-                    print("[I]", end="")
+                if self.world[x][y]["exterior"]:
+                    print("[E]", end="")
                 else:
-                    print("[O]", end="")
+                    print("[I]", end="")
             print()
         print()
 
@@ -245,7 +245,7 @@ class MyVacuumAgent(Agent):
         #self.state.print_visit_count()
         #self.state.print_world_debug()
         #self.state.print_heatmap()
-        self.state.print_interior()
+        self.state.print_exterior()
 
         return self.make_decision(bump, dirt, home, offsets)
 
@@ -317,11 +317,15 @@ class MyVacuumAgent(Agent):
                 return self.turn_right()
         
     def follow_wall_home(self, bump, left_tile, front_tile):
-        if bump:
+        if bump or front_tile["type"] == AGENT_STATE_WALL:
             self.log(f"BUMPED INTO WALL! TURN RIGHT!")
             return self.turn_right()
-
-
+        elif left_tile["type"] != AGENT_STATE_WALL and self.state.last_action != ACTION_TURN_LEFT:
+            self.log(f"NOT wall to the left -> Turn left!")
+            return self.turn_left()
+        else:
+            self.log(f"Wall to the left -> Go forward!")
+            return self.go_forward()
 
     def follow_wall(self, bump, left_offset, front_offset):
 
@@ -385,38 +389,22 @@ class MyVacuumAgent(Agent):
             self.log("JUST FINISHED FOLLOWING INNER WALL!")
             self.flood_fill_inner(self.current_wall[-1][0], self.current_wall[-1][1])
             return True
-    """
-    def update_world_borders(self):
-        self.log(f"UPDATING BORDER!")
-        self.flood_fill_outer(self.outer_wall_tiles[0][0], self.outer_wall_tiles[0][1])
-        for x in range(self.state.world_width):
-            for y in range(self.state.world_height):
-                if not self.state.world[x][y]["interior"]:
-                    self.state.world[x][y]["type"] = AGENT_STATE_WALL
-    """
+  
     def update_world_borders(self):
         self.log(f"UPDATING BORDER!")
         self.log(f"First tile in outer wall: {self.outer_wall_tiles[0]}, x: {self.outer_wall_tiles[0][0]}, y: {self.outer_wall_tiles[0][1]}")
-        self.flood_fill_outer(1, 1)
+        self.flood_fill_outer(self.outer_wall_tiles[0][0], self.outer_wall_tiles[0][1])
         for x in range(self.state.world_width):
             for y in range(self.state.world_height):
-                if not self.state.world[x][y]["interior"]:
+                if self.state.world[x][y]["exterior"]:
                     self.state.world[x][y]["type"] = AGENT_STATE_WALL
-        """
-        for x in range(self.state.world_width):
-            for y in range(self.state.world_height):
-                if not self.state.world[x][y]["interior"]:
-                    self.state.world[x][y]["type"] = AGENT_STATE_WALL
-        """
-
-    #(x, y) in self.current_wall or self.state.world[x][y]["interior"] or 
 
     def flood_fill_outer(self, x, y):
-        if (x, y) in self.current_wall or self.state.world[x][y]["interior"] or x < 0 or x >= self.state.world_width or y < 0 or y >= self.state.world_height:
-            self.log(f"{x}, {y} is in outer wall!")
+        if  x < 0 or x >= self.state.world_width or y < 0 or y >= self.state.world_height or self.state.world[x][y]["type"] == AGENT_STATE_CLEAR or self.state.world[x][y]["exterior"]:
+            self.log(f"{x}, {y} is an interior tile!")
             return
         self.log(f"Flood fill at {x}, {y}!")
-        self.state.world[x][y]["interior"] = True
+        self.state.world[x][y]["exterior"] = True
         self.flood_fill_outer(x + 1, y)  
         self.flood_fill_outer(x - 1, y)
         self.flood_fill_outer(x, y + 1)
@@ -435,7 +423,7 @@ class MyVacuumAgent(Agent):
 
     def get_best_direction(self, offsets):
         look_ahead_distance = 5
-        forward_bias_factor = 2
+        forward_bonus_factor = 3
         direction_points = []
         for offset in offsets:
             random_bonus_factor = random.uniform(0.9, 1.1)
@@ -455,7 +443,7 @@ class MyVacuumAgent(Agent):
                 direction_score = float('-inf')
             if offset == offsets[1]:
                 self.log(f"Forward score: {direction_score}")
-                direction_score *= forward_bias_factor
+                direction_score *= forward_bonus_factor
             direction_points.append(((direction_score / tiles_checked) + tiles_checked) * random_bonus_factor)
         self.log(f"Direction points: {direction_points}")
         return direction_points.index(max(direction_points))
