@@ -344,7 +344,7 @@ class MyVacuumAgent(Agent):
         if (self.state.pos_x, self.state.pos_y) == self.wall_start and self.has_moved_forward:
             self.has_passed_wall_start = True
 
-        self.log(f"Has moved forward: {self.has_passed_wall_start}")
+        self.log(f"Has passed wall start: {self.has_passed_wall_start}")
 
         if self.outer_wall_finished_check(front_offset) or self.inner_wall_finished_check(front_offset):
             self.log("RETURNED TO WALL START, TURN RIGHT!")
@@ -353,7 +353,7 @@ class MyVacuumAgent(Agent):
             self.wall_start = None
             self.turn_count["right"] = 0
             self.turn_count["left"] = 0
-            self.current_wall = []
+            self.current_wall = [] 
             self.has_passed_wall_start = False
             return self.turn_right()
 
@@ -377,7 +377,7 @@ class MyVacuumAgent(Agent):
         return self.turn_right()
 
     def outer_wall_finished_check(self, front_offset):
-        if front_offset in self.current_wall and self.has_passed_wall_start and self.turn_count["right"] > self.turn_count["left"]:
+        if front_offset in self.current_wall and self.has_passed_wall_start and self.turn_count["right"] > self.turn_count["left"] and (self.turn_count["right"] - self.turn_count["left"]) % 4 == 0:
             self.log(f"Tiles that are part of wall: {self.current_wall}")
             self.log("JUST FINISHED FOLLOWING OUTER WALL!")
             self.outer_wall_tiles = self.current_wall
@@ -506,7 +506,7 @@ class MyVacuumAgent(Agent):
                     self.state.world[x][y]["recently_visited"] += 1
 
     def update_heat(self):
-        wall_penalty_factor = -3
+        wall_penalty_factor = -1
         unknown_bonus_factor = 5
         visit_count_penalty_factor = -2
         recently_visited_bonus_factor = 1
