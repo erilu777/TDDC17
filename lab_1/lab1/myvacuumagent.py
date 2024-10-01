@@ -547,19 +547,17 @@ class MyVacuumAgent(Agent):
                 masked_visit_counts.T, 
                 cmap="Reds", 
                 interpolation="nearest", 
-                vmin=current_min_heat,  # White starts at 0 visits
-                vmax=max(1, current_max_heat) # Adjust vmax as needed
+                vmin=current_min_heat,  
+                vmax=max(1, current_max_heat) 
             )
             self.cbar = self.fig.colorbar(self.heatmap, label="Visit Count")
             
-            # Set wall color to blue
-            #self.heatmap.cmap.set_bad('blue') 
         else:
             self.heatmap.set_data(masked_visit_counts.T)
             self.heatmap.set_clim(vmin=current_min_heat, vmax=max(1, current_max_heat))  # Update colorbar range
             self.cbar.update_normal(self.heatmap)  # Update colorbar
 
-        self.ax.set_title("Heatmap of Agent's Visits")
+        self.ax.set_title("Agent Heatmap")
         self.ax.set_xlabel("X Position")
         self.ax.set_ylabel("Y Position")
 
