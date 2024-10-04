@@ -42,10 +42,6 @@ class MyAgentState:
         self.pos_x = 1
         self.pos_y = 1
 
-        # Loop detection
-        self.forward_counter = 0 
-        
-
         # Metadata
         self.world_width = width
         self.world_height = height
@@ -86,7 +82,6 @@ class MyAgentState:
                     print("D" if DEBUG_OPT_DENSEWORLDMAP else " D ", end="")
                 elif self.world[x][y]["type"] == AGENT_STATE_HOME:
                     print("H" if DEBUG_OPT_DENSEWORLDMAP else " H ", end="")
-
             print() # Newline
         print() # Delimiter post-print
     
@@ -104,6 +99,7 @@ class MyAgentState:
             print()
         print()
 
+    # Prints exterior tiles as [E] and interior as [I]
     def print_exterior(self):
         for y in range(self.world_height):
             for x in range(self.world_width):
@@ -127,7 +123,7 @@ class MyVacuumAgent(Agent):
         self.log = log
 
         # Initialize heatmap
-        plt.ion()  # Turn on interactive mode 
+        plt.ion()   
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.heatmap = None 
         self.fig.canvas.draw()  
@@ -215,7 +211,7 @@ class MyVacuumAgent(Agent):
         if self.iteration_counter % self.heatmap_update_frequency == 0:
             self.update_heatmap()
         
-        # Track position of agent
+        # Update position of agent
         self.state.update_position(bump)
 
         # Update perceived state of current tile
@@ -226,7 +222,6 @@ class MyVacuumAgent(Agent):
         
         #Increment visit count and recently visited
         self.state.world[self.state.pos_x][self.state.pos_y]["visit_count"] += 1
-
         self.update_recently_visited()
 
         # Get an xy-pair based on where the agent is facing
@@ -241,7 +236,7 @@ class MyVacuumAgent(Agent):
 
         self.log(f"Position: x: {self.state.pos_x}, y: {self.state.pos_y}, Direction: {self.state.direction}")
 
-        # Debug
+        # Debug. Print the world as the agent knows it
         #self.state.print_visit_count()
         #self.state.print_world_debug()
         #self.state.print_heatmap()
@@ -259,9 +254,11 @@ class MyVacuumAgent(Agent):
         front_y = self.state.pos_y + front_dy
         front_tile = self.state.world[self.state.pos_x + front_dx][self.state.pos_y + front_dy]
 
+        # Check if all tiles have been discovered
         if not self.all_tiles_discovered:
             self.all_tiles_discovered = self.check_if_finished()
 
+        # If all tiles have been discovered, the agent returns home by following the outer wall 
         if self.all_tiles_discovered:
             self.log(f"ALL TILES DISCOVERED!")
             self.log(f"Following wall home: {self.following_wall_home}")
@@ -297,12 +294,14 @@ class MyVacuumAgent(Agent):
             self.log("Following wall! NOT BUMPED!")
             return self.follow_wall(bump, offsets[0], offsets[1])
 
+        # If not following wall, use the heatmap to decide which direction to go
         next_direction = self.get_best_direction(offsets)
         if next_direction == 1:
             self.log("Front tile is best -> going forward!")
             self.turns_without_forward = 0
             return self.go_forward()
         else:
+            # If the agent has turned too many times without going forward, it will go forward
             if self.turns_without_forward > self.max_turns_without_forward:
                 self.log("Too many turns without going forward -> going forward!")
                 self.turns_without_forward = 0
@@ -316,6 +315,7 @@ class MyVacuumAgent(Agent):
                 self.turns_without_forward += 1
                 return self.turn_right()
         
+    # Follows the wall home by hugging the wall to the left
     def follow_wall_home(self, bump, left_tile, front_tile):
         if bump or front_tile["type"] == AGENT_STATE_WALL:
             self.log(f"BUMPED INTO WALL! TURN RIGHT!")
@@ -385,7 +385,7 @@ class MyVacuumAgent(Agent):
             return True  
 
     def inner_wall_finished_check(self, front_offset):
-        if self.has_passed_wall_start and self.has_moved_forward and self.turn_count["right"] < self.turn_count["left"]:
+        if self.has_passed_wall_start and self.has_moved_forward and self.turn_count["right"] < self.turn_count["left"] and (self.turn_count["right"] - self.turn_count["left"]) % 4 == 0:
             self.log("JUST FINISHED FOLLOWING INNER WALL!")
             self.flood_fill_inner(self.current_wall[-1][0], self.current_wall[-1][1])
             return True
@@ -399,6 +399,7 @@ class MyVacuumAgent(Agent):
                 if self.state.world[x][y]["exterior"]:
                     self.state.world[x][y]["type"] = AGENT_STATE_WALL
 
+    # Recursive flood fill for exterior tiles
     def flood_fill_outer(self, x, y):
         if  x < 0 or x >= self.state.world_width or y < 0 or y >= self.state.world_height or self.state.world[x][y]["type"] == AGENT_STATE_CLEAR or self.state.world[x][y]["exterior"]:
             self.log(f"{x}, {y} is an interior tile!")
@@ -410,6 +411,7 @@ class MyVacuumAgent(Agent):
         self.flood_fill_outer(x, y + 1)
         self.flood_fill_outer(x, y - 1)
 
+    # Recursive flood fill for inner tiles
     def flood_fill_inner(self, x, y):
         if self.state.world[x][y]["type"] != AGENT_STATE_WALL and self.state.world[x][y]["type"] != AGENT_STATE_UNKNOWN or (x, y) in self.closed_in_tiles:
             return
@@ -421,6 +423,7 @@ class MyVacuumAgent(Agent):
         self.flood_fill_inner(x, y + 1)
         self.flood_fill_inner(x, y - 1)
 
+    # The agent looks ahead five tiles left, forward and right and picks the direction with the highest heat score
     def get_best_direction(self, offsets):
         look_ahead_distance = 5
         forward_bonus_factor = 3
@@ -483,20 +486,6 @@ class MyVacuumAgent(Agent):
                     return False
         return True
 
-    def reset_heatmap(self):
-        for y in range(self.state.world_height):
-            for x in range(self.state.world_width):
-                self.state.world[x][y]["heat"] = 0
-                self.state.world[x][y]["visit_count"] = 0
-                self.state.world[x][y]["recently_visited"] = 0
-
-    def create_heatmap_slope(self):
-        for y in range(self.state.world_height):
-            for x in range(self.state.world_width):
-                if self.state.world[x][y]["type"] != AGENT_STATE_WALL:
-                    self.state.world[x][y]["visit_count"] += (x + y)
-        self.log("Slope created!")
-
     def update_recently_visited(self):
         for y in range(self.state.world_height):
             for x in range(self.state.world_width):
@@ -505,6 +494,7 @@ class MyVacuumAgent(Agent):
                 else:
                     self.state.world[x][y]["recently_visited"] += 1
 
+    # Update heat based on visit count, recently visited, whether tile is a wall or unknown 
     def update_heat(self):
         wall_penalty_factor = -1
         unknown_bonus_factor = 5
@@ -520,10 +510,12 @@ class MyVacuumAgent(Agent):
                     tile["heat"] = (tile["visit_count"] * visit_count_penalty_factor + tile["recently_visited"] * recently_visited_bonus_factor) 
                     if tile["type"] == AGENT_STATE_UNKNOWN:
                         tile["heat"] += unknown_bonus_factor * (MAX_ITERATIONS - self.iteration_counter)
+                # Once all tiles have been discovered, the agent will prioritize the outer wall so it can start heading home
                 if self.all_tiles_discovered:
                     if (x, y) in self.outer_wall_tiles:
                         tile["heat"] += outer_wall_bonus_factor * (MAX_ITERATIONS - self.iteration_counter)
 
+    # Use pyplot to display the heatmap
     def update_heatmap(self):
         visit_counts = np.zeros((self.state.world_width, self.state.world_height))
         for y in range(self.state.world_height):
@@ -542,7 +534,6 @@ class MyVacuumAgent(Agent):
         current_min_heat = np.min(masked_visit_counts)
 
         if self.heatmap is None:  # Create heatmap on first update
-            # Use 'Reds' colormap for white to dark red
             self.heatmap = self.ax.imshow(
                 masked_visit_counts.T, 
                 cmap="Reds", 
@@ -550,7 +541,7 @@ class MyVacuumAgent(Agent):
                 vmin=current_min_heat,  
                 vmax=max(1, current_max_heat) 
             )
-            self.cbar = self.fig.colorbar(self.heatmap, label="Visit Count")
+            self.cbar = self.fig.colorbar(self.heatmap, label="Heat score")
             
         else:
             self.heatmap.set_data(masked_visit_counts.T)
