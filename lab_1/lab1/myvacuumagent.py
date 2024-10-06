@@ -317,7 +317,9 @@ class MyVacuumAgent(Agent):
         
     # Follows the wall home by hugging the wall to the left
     def follow_wall_home(self, bump, left_tile, front_tile):
-        if bump or front_tile["type"] == AGENT_STATE_WALL:
+        if left_tile["type"] == AGENT_STATE_CLEAR and self.state.last_action != ACTION_TURN_LEFT:
+            return self.turn_left()
+        if front_tile["type"] == AGENT_STATE_WALL:
             self.log(f"BUMPED INTO WALL! TURN RIGHT!")
             return self.turn_right()
         elif left_tile["type"] != AGENT_STATE_WALL and self.state.last_action != ACTION_TURN_LEFT:
@@ -384,7 +386,7 @@ class MyVacuumAgent(Agent):
             self.update_world_borders()          
             return True  
 
-    def inner_wall_finished_check(self, front_offset):
+    def inner_wall_finished_check(self):
         if self.has_passed_wall_start and self.has_moved_forward and self.turn_count["right"] < self.turn_count["left"] and (self.turn_count["right"] - self.turn_count["left"]) % 4 == 0:
             self.log("JUST FINISHED FOLLOWING INNER WALL!")
             self.flood_fill_inner(self.current_wall[-1][0], self.current_wall[-1][1])
@@ -545,7 +547,7 @@ class MyVacuumAgent(Agent):
             
         else:
             self.heatmap.set_data(masked_visit_counts.T)
-            self.heatmap.set_clim(vmin=current_min_heat, vmax=max(1, current_max_heat))  # Update colorbar range
+            self.heatmap.set_clim(vmin=current_min_heat, vmax=max(1, current_max_heat))  
             self.cbar.update_normal(self.heatmap)  # Update colorbar
 
         self.ax.set_title("Agent Heatmap")
@@ -556,7 +558,6 @@ class MyVacuumAgent(Agent):
         self.ax.set_xticks(np.arange(-0.5, self.state.world_width, 1))  # Align with tile edges
         self.ax.set_yticks(np.arange(-0.5, self.state.world_height, 1)) # Align with tile edges 
 
-        # Remove tick labels
         self.ax.set_xticklabels([])
         self.ax.set_yticklabels([])
 
