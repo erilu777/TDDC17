@@ -237,10 +237,10 @@ class MyVacuumAgent(Agent):
         self.log(f"Position: x: {self.state.pos_x}, y: {self.state.pos_y}, Direction: {self.state.direction}")
 
         # Debug. Print the world as the agent knows it
-        #self.state.print_visit_count()
-        #self.state.print_world_debug()
-        #self.state.print_heatmap()
-        self.state.print_exterior()
+        #self.state.print_visit_count()     #uncomment to print visit count
+        #self.state.print_world_debug()     #uncomment to print tile types
+        #self.state.print_heatmap() //      #uncomment to print heatmap
+        #self.state.print_exterior()        #uncomment to print exterior tiles
 
         return self.make_decision(bump, dirt, home, offsets)
 
@@ -328,7 +328,7 @@ class MyVacuumAgent(Agent):
         else:
             self.log(f"Wall to the left -> Go forward!")
             return self.go_forward()
-
+        
     def follow_wall(self, bump, left_offset, front_offset):
 
         self.log(f"Left turn count: {self.turn_count['left']}, Right turn count: {self.turn_count['right']}")
@@ -348,7 +348,7 @@ class MyVacuumAgent(Agent):
 
         self.log(f"Has passed wall start: {self.has_passed_wall_start}")
 
-        if self.outer_wall_finished_check(front_offset) or self.inner_wall_finished_check(front_offset):
+        if self.outer_wall_finished_check(front_offset) or self.inner_wall_finished_check():
             self.log("RETURNED TO WALL START, TURN RIGHT!")
             self.has_moved_forward = False
             self.following_wall = False
@@ -547,7 +547,7 @@ class MyVacuumAgent(Agent):
             
         else:
             self.heatmap.set_data(masked_visit_counts.T)
-            self.heatmap.set_clim(vmin=current_min_heat, vmax=max(1, current_max_heat))  
+            self.heatmap.set_clim(vmin=current_min_heat, vmax=max(1, current_max_heat))  # Update colorbar range
             self.cbar.update_normal(self.heatmap)  # Update colorbar
 
         self.ax.set_title("Agent Heatmap")
@@ -558,6 +558,7 @@ class MyVacuumAgent(Agent):
         self.ax.set_xticks(np.arange(-0.5, self.state.world_width, 1))  # Align with tile edges
         self.ax.set_yticks(np.arange(-0.5, self.state.world_height, 1)) # Align with tile edges 
 
+        # Remove tick labels
         self.ax.set_xticklabels([])
         self.ax.set_yticklabels([])
 
