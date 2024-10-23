@@ -558,7 +558,6 @@ class MyVacuumAgent(Agent):
         self.ax.set_xticks(np.arange(-0.5, self.state.world_width, 1))  # Align with tile edges
         self.ax.set_yticks(np.arange(-0.5, self.state.world_height, 1)) # Align with tile edges 
 
-        # Remove tick labels
         self.ax.set_xticklabels([])
         self.ax.set_yticklabels([])
 
